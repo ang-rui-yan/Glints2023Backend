@@ -1,0 +1,58 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Restaurant {
+  id             Int                     @id @default(autoincrement())
+  restaurantName String                  @unique
+  cashBalance    BigInt
+  openingHours   RestaurantOpeningHour[]
+  dishes         RestaurantDish[]
+}
+
+model RestaurantOpeningHour {
+  id               Int        @id @default(autoincrement())
+  startDayOfWeek   Int
+  startTimeHours   Int
+  startTimeMinutes Int
+  endDayOfWeek     Int
+  endTimeHours     Int
+  endTimeMinutes   Int
+  restaurantId     Int
+  restaurant       Restaurant @relation(fields: [restaurantId], references: [id])
+}
+
+model RestaurantDish {
+  id                      Int                       @id @default(autoincrement())
+  dishName                String
+  price                   BigInt
+  restaurantId            Int
+  restaurant              Restaurant                @relation(fields: [restaurantId], references: [id])
+  CustomerPurchaseHistory CustomerPurchaseHistory[]
+}
+
+model Customer {
+  id              Int                       @id @default(autoincrement())
+  firstName       String
+  lastName        String
+  cashBalance     BigInt
+  purchaseHistory CustomerPurchaseHistory[]
+}
+
+model CustomerPurchaseHistory {
+  transactionDate DateTime
+  dishId          Int
+  customerId      Int
+  dish            RestaurantDish @relation(fields: [dishId], references: [id])
+  customer        Customer       @relation(fields: [customerId], references: [id])
+
+  @@id([transactionDate, dishId, customerId])
+}
