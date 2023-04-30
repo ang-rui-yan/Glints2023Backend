@@ -10,6 +10,9 @@ const app: Express = express();
 const port = process.env.PORT;
 
 const prisma = new PrismaClient();
+app.get('/', async (req: Request, res: Response) => {
+	res.send('Hello world');
+});
 
 app.get('/restaurants', async (req: Request, res: Response) => {
 	const restaurants = await prisma.restaurant.findMany({
@@ -136,7 +139,7 @@ async function findRestaurants({
 			restaurantName: true,
 			dishes: {
 				select: {
-					id: false,
+					id: true,
 					dishName: true,
 					price: true,
 				},
@@ -206,6 +209,7 @@ app.get(
 					},
 					dishes: {
 						select: {
+							id: true,
 							dishName: true,
 							price: true,
 						},
