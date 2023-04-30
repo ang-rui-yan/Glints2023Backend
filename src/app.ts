@@ -1,4 +1,5 @@
 import express, { Express, Request, Response } from 'express';
+import { matchedData, query, validationResult } from 'express-validator';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 
@@ -43,54 +44,58 @@ app.get('/restaurants', async (req: Request, res: Response) => {
 	res.send(data);
 });
 
-app.get('/restaurants/date/:datetime', async (req: Request, res: Response) => {
-	const { datetime } = req.params;
+app.get(
+	'/restaurants/date',
+	query('datetime').notEmpty().escape(),
+	async (req: Request, res: Response) => {
+		const result = validationResult(req);
 
-	try {
-		const openingHours = await prisma.restaurant.findMany({
-			where: {
-				AND: [
-					{
-						openingHours: {
-							some: {
-								startDayOfWeek: {
-									lte: new Date(datetime).getDay(),
-								},
-								startTimeHours: {
-									lte: new Date(datetime).getUTCHours(),
-								},
-								startTimeMinutes: {
-									lte: new Date(datetime).getMinutes(),
-								},
-								endDayOfWeek: {
-									gte: new Date(datetime).getDay(),
-								},
-								endTimeHours: {
-									gte: new Date(datetime).getUTCHours(),
-								},
-								endTimeMinutes: {
-									gte: new Date(datetime).getMinutes(),
+		if (result.isEmpty()) {
+			const queryData = matchedData(req);
+
+			const openingHours = await prisma.restaurant.findMany({
+				where: {
+					AND: [
+						{
+							openingHours: {
+								some: {
+									startDayOfWeek: {
+										lte: new Date(queryData.datetime).getDay(),
+									},
+									startTimeHours: {
+										lte: new Date(queryData.datetime).getUTCHours(),
+									},
+									startTimeMinutes: {
+										lte: new Date(queryData.datetime).getMinutes(),
+									},
+									endDayOfWeek: {
+										gte: new Date(queryData.datetime).getDay(),
+									},
+									endTimeHours: {
+										gte: new Date(queryData.datetime).getUTCHours(),
+									},
+									endTimeMinutes: {
+										gte: new Date(queryData.datetime).getMinutes(),
+									},
 								},
 							},
 						},
-					},
-				],
-			},
-		});
+					],
+				},
+				include: {
+					openingHours: true,
+				},
+			});
 
-		const data = JSON.stringify(openingHours, (key, value) =>
-			typeof value === 'bigint' ? Number(value) / 100 : value
-		);
-		res.send(data);
-	} catch (error) {
-		console.error(error);
-		res.status(500).send('Error listing restaurants');
+			const data = JSON.stringify(openingHours, (key, value) =>
+				typeof value === 'bigint' ? Number(value) / 100 : value
+			);
+			res.send(data);
+		} else {
+			res.send({ errors: result.array() });
+		}
 	}
-});
-
-app.get('/restaurants/top', (req: Request, res: Response) => {
-	res.send('restaurant top');
-});
+);
 
 async function findRestaurants({
 	priceRangeMin,
@@ -152,7 +157,7 @@ async function findRestaurants({
 	return restaurants;
 }
 
-app.get('/restaurants/search', async (req: Request, res: Response) => {
+app.get('/restaurants/top', async (req: Request, res: Response) => {
 	const priceRangeMin =
 		req.query.priceRangeMin !== undefined
 			? Math.floor(Number(req.query.priceRangeMin) * 100)
@@ -179,6 +184,86 @@ app.get('/restaurants/search', async (req: Request, res: Response) => {
 		typeof value === 'bigint' ? Number(value) / 100 : value
 	);
 	res.send(data);
+});
+
+app.get('/restaurants/search', async (req: Request, res: Response) => {
+	// restaurant name
+	// dishes name
+	if (req.query.restaurantName !== undefined && req.query.dishesName !== undefined) {
+		res.send({ error: 'input only one search term' });
+		return;
+	}
+
+	if (req.query.restaurantName !== undefined) {
+		const restaurantName = req.query.restaurantName.toString();
+
+		const searchedRestaurants = await prisma.restaurant.findMany({
+			select: {
+				restaurantName: true,
+				openingHours: true,
+				dishes: true,
+			},
+			where: {
+				restaurantName: {
+					search: restaurantName,
+				},
+			},
+		});
+
+		const data = JSON.stringify(searchedRestaurants, (key, value) =>
+			typeof value === 'bigint' ? Number(value) / 100 : value
+		);
+
+		res.send(data);
+		return;
+	}
+
+	if (req.query.dishName !== undefined) {
+		const dishName = req.query.dishName !== undefined ? req.query.dishName.toString() : '';
+
+		const searchedDishes = await prisma.restaurantDish.findMany({
+			select: {
+				dishName: true,
+				price: true,
+				restaurant: {
+					select: {
+						restaurantName: true,
+						openingHours: {
+							select: {
+								startDayOfWeek: true,
+								startTimeHours: true,
+								startTimeMinutes: true,
+								endDayOfWeek: true,
+								endTimeHours: true,
+								endTimeMinutes: true,
+							},
+						},
+						dishes: {
+							select: {
+								dishName: true,
+								price: true,
+							},
+						},
+					},
+				},
+			},
+			where: {
+				dishName: {
+					search: dishName,
+				},
+			},
+		});
+
+		const data = JSON.stringify(searchedDishes, (key, value) =>
+			typeof value === 'bigint' ? Number(value) / 100 : value
+		);
+
+		res.send(data);
+		return;
+	}
+
+	// TODO: fix the errors
+	res.send({ error: 'invalid query params' });
 });
 
 app.get('/user/transactions', (req: Request, res: Response) => {
