@@ -1,22 +1,3 @@
-// export interface Restaurant {
-// 	restaurantName: string;
-// 	cashBalance: number;
-// 	openingHours: RestaurantOpeningHour[];
-// 	menu: RestaurantDish[];
-// }
-
-// export interface RestaurantOpeningHour {
-// 	startDayOfWeek: number;
-// 	startTime: Date;
-// 	endDayOfWeek: number;
-// 	endTime: Date;
-// }
-
-// export interface RestaurantDish {
-// 	dishName: string;
-// 	price: number;
-// }
-
 export interface RestaurantData {
 	restaurantName: string;
 	cashBalance: number;
@@ -25,14 +6,6 @@ export interface RestaurantData {
 		price: number;
 	}[];
 	openingHours: string;
-}
-
-export interface Restaurant {
-	id: number;
-	restaurantName: string;
-	cashBalance: number;
-	openingHours: RestaurantOpeningHour[];
-	dishes: RestaurantDish[];
 }
 
 export interface RestaurantOpeningHour {
@@ -44,21 +17,17 @@ export interface RestaurantOpeningHour {
 	endTimeMinutes: number;
 }
 
-export interface RestaurantDish {
-	dishName: string;
-	price: bigint;
+export interface Customer {
+	id: number;
+	firstName: string;
+	lastName: string;
+	cashBalance: number;
+	purchaseHistory: CustomerPurchaseHistory[];
 }
 
-// export interface Customer {
-// 	firstName: string;
-// 	lastName: string;
-// 	cashBalance: bigint;
-// }
-
-// export interface CustomerPurchaseHistory {
-// 	transactionDate: Date;
-// 	dishId: number;
-// 	customerId: number;
-// 	dish: RestaurantDish;
-// 	customer: Customer;
-// }
+export interface CustomerPurchaseHistory {
+	dishName: string;
+	restaurantName: string;
+	transactionDate: Date;
+	transactionAmount: number;
+}

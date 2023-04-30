@@ -32,6 +32,7 @@ app.get('/restaurants', async (req: Request, res: Response) => {
 			},
 			dishes: {
 				select: {
+					id: true,
 					dishName: true,
 					price: true,
 				},
@@ -280,8 +281,85 @@ app.get('/restaurants/search', async (req: Request, res: Response) => {
 	res.send({ error: 'invalid query params' });
 });
 
-app.get('/user/transactions', (req: Request, res: Response) => {
-	res.send('restaurant transactions');
+app.get('/customers', query('id').notEmpty().escape(), async (req: Request, res: Response) => {
+	const result = validationResult(req);
+
+	if (result.isEmpty()) {
+		const customers = await prisma.customer.findMany({
+			where: {
+				id: Number(req.query.id),
+			},
+			include: {
+				purchaseHistory: true,
+			},
+		});
+		const data = JSON.stringify(customers, (key, value) =>
+			typeof value === 'bigint' ? Number(value) / 100 : value
+		);
+		res.send(data);
+	} else {
+		const customers = await prisma.customer.findMany({
+			include: {
+				purchaseHistory: true,
+			},
+		});
+		const data = JSON.stringify(customers, (key, value) =>
+			typeof value === 'bigint' ? Number(value) / 100 : value
+		);
+		res.send(data);
+	}
+});
+
+app.get('/customers/pay', async (req: Request, res: Response) => {
+	// id, dish_id
+
+	const customer = await prisma.customer.findFirstOrThrow({
+		where: {
+			id: Number(req.query.customerId),
+		},
+	});
+
+	const dish = await prisma.restaurantDish.findFirstOrThrow({
+		where: {
+			id: Number(req.query.dishId),
+		},
+	});
+
+	const restaurant = await prisma.restaurant.findFirstOrThrow({
+		where: {
+			id: Number(dish.restaurantId),
+		},
+	});
+
+	if (customer.cashBalance < dish.price) {
+		res.statusCode = 402;
+		res.send('Insufficient cash balance');
+		return;
+	}
+	try {
+		const updatedCustomer = await prisma.customer.update({
+			where: {
+				id: Number(req.query.customerId),
+			},
+			data: {
+				cashBalance: customer.cashBalance - dish.price,
+				purchaseHistory: {
+					create: {
+						dishName: dish.dishName,
+						restaurantName: restaurant.restaurantName,
+						transactionAmount: dish.price,
+					},
+				},
+			},
+		});
+		const data = JSON.stringify(updatedCustomer, (key, value) =>
+			typeof value === 'bigint' ? Number(value) / 100 : value
+		);
+		res.send(data);
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ message: 'Error updating customer data' });
+	}
 });
 
 app.listen(port, () => {

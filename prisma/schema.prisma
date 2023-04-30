@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["fullTextSearch"]
 }
 
@@ -32,12 +32,11 @@ model RestaurantOpeningHour {
 }
 
 model RestaurantDish {
-  id                      Int                       @id @default(autoincrement())
-  dishName                String
-  price                   BigInt
-  restaurantId            Int
-  restaurant              Restaurant                @relation(fields: [restaurantId], references: [id])
-  CustomerPurchaseHistory CustomerPurchaseHistory[]
+  id           Int        @id @default(autoincrement())
+  dishName     String
+  price        BigInt
+  restaurantId Int
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
 }
 
 model Customer {
@@ -49,11 +48,12 @@ model Customer {
 }
 
 model CustomerPurchaseHistory {
-  transactionDate DateTime
-  dishId          Int
-  customerId      Int
-  dish            RestaurantDish @relation(fields: [dishId], references: [id])
-  customer        Customer       @relation(fields: [customerId], references: [id])
+  dishName          String
+  restaurantName    String
+  transactionDate   DateTime @default(now())
+  transactionAmount BigInt
+  customerId        Int
+  customer          Customer @relation(fields: [customerId], references: [id])
 
-  @@id([transactionDate, dishId, customerId])
+  @@id([transactionDate, dishName, customerId])
 }

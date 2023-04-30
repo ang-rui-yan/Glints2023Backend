@@ -1,9 +1,9 @@
 import _rawRestaurantData from '../data/restaurant_with_menu.json';
+import _rawUserData from '../data/users_with_purchase_history.json';
 import {
-	Restaurant,
 	RestaurantOpeningHour,
-	RestaurantDish,
-	RestaurantData,
+	Customer,
+	CustomerPurchaseHistory,
 } from '../models/restaurant.model';
 
 /* handle opening hours of restaurant */
@@ -141,6 +141,25 @@ export function parseOpeningHours(rawOpeningHours: string) {
 }
 /* end of handle opening hours of restaurant */
 
-export function getRestaurantData(): RestaurantData[] {
-	return _rawRestaurantData;
+export function getUserData(): Customer[] {
+	let data: Customer[] = [];
+	for (const user of _rawUserData) {
+		let purchaseHistory: CustomerPurchaseHistory[] = [];
+		for (const purchase of user.purchaseHistory) {
+			purchaseHistory.push({
+				dishName: purchase.dishName,
+				restaurantName: purchase.restaurantName,
+				transactionDate: new Date(purchase.transactionDate),
+				transactionAmount: Math.floor(purchase.transactionAmount * 100),
+			});
+		}
+		data.push({
+			id: user.id,
+			firstName: user.name.split(' ')[0],
+			lastName: user.name.split(' ')[1],
+			cashBalance: Math.floor(user.cashBalance * 100),
+			purchaseHistory: purchaseHistory,
+		});
+	}
+	return data;
 }

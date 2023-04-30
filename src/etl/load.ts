@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { parseOpeningHours } from './transform.ts';
+import { parseOpeningHours, getUserData } from './transform.ts';
 import _rawRestaurantData from '../data/restaurant_with_menu.json';
-import { RestaurantData } from '../models/restaurant.model.ts';
+import { RestaurantData, Customer, CustomerPurchaseHistory } from '../models/restaurant.model.ts';
 
 const prisma = new PrismaClient();
 
@@ -32,6 +32,35 @@ async function insertRestaurant(data: RestaurantData[]) {
 }
 
 insertRestaurant(_rawRestaurantData)
+	.catch((error) => {
+		console.error(error);
+	})
+	.finally(async () => {
+		await prisma.$disconnect();
+	});
+
+async function insertCustomer(data: Customer[]) {
+	await prisma.customerPurchaseHistory.deleteMany();
+	await prisma.customer.deleteMany();
+
+	for (const entry of data) {
+		const { id, firstName, lastName, cashBalance, purchaseHistory } = entry;
+
+		await prisma.customer.create({
+			data: {
+				id: id,
+				firstName: firstName,
+				lastName: lastName,
+				cashBalance: cashBalance,
+				purchaseHistory: {
+					create: purchaseHistory,
+				},
+			},
+		});
+	}
+}
+
+insertCustomer(getUserData())
 	.catch((error) => {
 		console.error(error);
 	})
