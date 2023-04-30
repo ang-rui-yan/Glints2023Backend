@@ -4,7 +4,7 @@
 
 ## Setup
 
--   Set up PostgresSQL
+-   Set up PostgresSQL and docker
 -   Create .env with the following
 
 ```
