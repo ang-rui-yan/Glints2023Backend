@@ -2,6 +2,7 @@ import express, { Express, Request, Response } from 'express';
 import { matchedData, query, validationResult } from 'express-validator';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+import { checkBothNumericQuery, checkXORQuery } from './middleware/middleware';
 
 dotenv.config();
 
@@ -9,10 +10,6 @@ const app: Express = express();
 const port = process.env.PORT;
 
 const prisma = new PrismaClient();
-
-app.get('/', (req: Request, res: Response) => {
-	res.send('Express + TypeScript Server');
-});
 
 app.get('/restaurants', async (req: Request, res: Response) => {
 	const restaurants = await prisma.restaurant.findMany({
@@ -42,59 +39,57 @@ app.get('/restaurants', async (req: Request, res: Response) => {
 	const data = JSON.stringify(restaurants, (key, value) =>
 		typeof value === 'bigint' ? Number(value) / 100 : value
 	);
-	res.send(data);
+	return res.json(JSON.parse(data));
 });
 
 app.get(
 	'/restaurants/date',
 	query('datetime').notEmpty().escape(),
 	async (req: Request, res: Response) => {
-		const result = validationResult(req);
+		const errors = validationResult(req);
+		if (!errors.isEmpty()) {
+			return res.status(400).json({ errors: errors.array() });
+		}
+		const queryData = matchedData(req);
 
-		if (result.isEmpty()) {
-			const queryData = matchedData(req);
-
-			const openingHours = await prisma.restaurant.findMany({
-				where: {
-					AND: [
-						{
-							openingHours: {
-								some: {
-									startDayOfWeek: {
-										lte: new Date(queryData.datetime).getDay(),
-									},
-									startTimeHours: {
-										lte: new Date(queryData.datetime).getUTCHours(),
-									},
-									startTimeMinutes: {
-										lte: new Date(queryData.datetime).getMinutes(),
-									},
-									endDayOfWeek: {
-										gte: new Date(queryData.datetime).getDay(),
-									},
-									endTimeHours: {
-										gte: new Date(queryData.datetime).getUTCHours(),
-									},
-									endTimeMinutes: {
-										gte: new Date(queryData.datetime).getMinutes(),
-									},
+		const openingHours = await prisma.restaurant.findMany({
+			where: {
+				AND: [
+					{
+						openingHours: {
+							some: {
+								startDayOfWeek: {
+									lte: new Date(queryData.datetime).getDay(),
+								},
+								startTimeHours: {
+									lte: new Date(queryData.datetime).getUTCHours(),
+								},
+								startTimeMinutes: {
+									lte: new Date(queryData.datetime).getMinutes(),
+								},
+								endDayOfWeek: {
+									gte: new Date(queryData.datetime).getDay(),
+								},
+								endTimeHours: {
+									gte: new Date(queryData.datetime).getUTCHours(),
+								},
+								endTimeMinutes: {
+									gte: new Date(queryData.datetime).getMinutes(),
 								},
 							},
 						},
-					],
-				},
-				include: {
-					openingHours: true,
-				},
-			});
+					},
+				],
+			},
+			include: {
+				openingHours: true,
+			},
+		});
 
-			const data = JSON.stringify(openingHours, (key, value) =>
-				typeof value === 'bigint' ? Number(value) / 100 : value
-			);
-			res.send(data);
-		} else {
-			res.send({ errors: result.array() });
-		}
+		const data = JSON.stringify(openingHours, (key, value) =>
+			typeof value === 'bigint' ? Number(value) / 100 : value
+		);
+		return res.json(JSON.parse(data));
 	}
 );
 
@@ -158,146 +153,124 @@ async function findRestaurants({
 	return restaurants;
 }
 
-app.get('/restaurants/top', async (req: Request, res: Response) => {
-	const priceRangeMin =
-		req.query.priceRangeMin !== undefined
-			? Math.floor(Number(req.query.priceRangeMin) * 100)
-			: 0;
-	const priceRangeMax =
-		req.query.priceRangeMax !== undefined
-			? Math.floor(Number(req.query.priceRangeMax) * 100)
-			: 300;
+app.get(
+	'/restaurants/top',
+	query(['priceRangeMin', 'priceRangeMax', 'restaurantLimit', 'dishesCount', 'isMore'])
+		.notEmpty()
+		.escape(),
+	async (req: Request, res: Response) => {
+		const errors = validationResult(req);
+		if (!errors.isEmpty()) {
+			return res.status(400).json({ errors: errors.array() });
+		}
 
-	const restaurantLimit =
-		req.query.restaurantLimit !== undefined ? Number(req.query.restaurantLimit) : 10;
-	const dishesCount = req.query.dishesCount !== undefined ? Number(req.query.dishesCount) : 10;
-
-	const isMore = req.query.isMore !== undefined ? req.query.isMore.toString() === '1' : false;
-
-	const restaurants = await findRestaurants({
-		priceRangeMin: priceRangeMin,
-		priceRangeMax: priceRangeMax,
-		restaurantLimit: restaurantLimit,
-		dishesCount: Number(dishesCount),
-		isMore: isMore,
-	});
-	const data = JSON.stringify(restaurants, (key, value) =>
-		typeof value === 'bigint' ? Number(value) / 100 : value
-	);
-	res.send(data);
-});
-
-app.get('/restaurants/search', async (req: Request, res: Response) => {
-	// restaurant name
-	// dishes name
-	if (req.query.restaurantName !== undefined && req.query.dishesName !== undefined) {
-		res.send({ error: 'input only one search term' });
-		return;
-	}
-
-	if (req.query.restaurantName !== undefined) {
-		const restaurantName = req.query.restaurantName.toString();
-
-		const searchedRestaurants = await prisma.restaurant.findMany({
-			select: {
-				restaurantName: true,
-				openingHours: {
-					select: {
-						startDayOfWeek: true,
-						startTimeHours: true,
-						startTimeMinutes: true,
-						endDayOfWeek: true,
-						endTimeHours: true,
-						endTimeMinutes: true,
-					},
-				},
-				dishes: {
-					select: {
-						dishName: true,
-						price: true,
-					},
-				},
-			},
-			where: {
-				restaurantName: {
-					search: restaurantName,
-				},
-			},
+		const restaurants = await findRestaurants({
+			priceRangeMin: Math.floor(Number(req.query.priceRangeMin) * 100),
+			priceRangeMax: Math.floor(Number(req.query.priceRangeMax) * 100),
+			restaurantLimit: Number(req.query.restaurantLimit),
+			dishesCount: Number(req.query.dishesCount),
+			isMore: req.query.isMore?.toString() === '1',
 		});
 
-		const data = JSON.stringify(searchedRestaurants, (key, value) =>
+		const data = JSON.stringify(restaurants, (key, value) =>
 			typeof value === 'bigint' ? Number(value) / 100 : value
 		);
-
-		res.send(data);
-		return;
+		return res.json(JSON.parse(data));
 	}
+);
 
-	if (req.query.dishName !== undefined) {
-		const dishName = req.query.dishName !== undefined ? req.query.dishName.toString() : '';
+app.get(
+	'/restaurants/search',
+	checkXORQuery('restaurantName', 'dishName'),
+	async (req: Request, res: Response) => {
+		const errors = validationResult(req);
+		if (!errors.isEmpty()) {
+			return res.status(400).json({ errors: errors.array() });
+		}
 
-		const searchedDishes = await prisma.restaurantDish.findMany({
-			select: {
-				dishName: true,
-				price: true,
-				restaurant: {
-					select: {
-						restaurantName: true,
-						openingHours: {
-							select: {
-								startDayOfWeek: true,
-								startTimeHours: true,
-								startTimeMinutes: true,
-								endDayOfWeek: true,
-								endTimeHours: true,
-								endTimeMinutes: true,
-							},
+		if (req.query.restaurantName !== undefined) {
+			const restaurantName = req.query.restaurantName.toString();
+
+			const searchedRestaurants = await prisma.restaurant.findMany({
+				select: {
+					restaurantName: true,
+					openingHours: {
+						select: {
+							startDayOfWeek: true,
+							startTimeHours: true,
+							startTimeMinutes: true,
+							endDayOfWeek: true,
+							endTimeHours: true,
+							endTimeMinutes: true,
 						},
-						dishes: {
-							select: {
-								dishName: true,
-								price: true,
+					},
+					dishes: {
+						select: {
+							dishName: true,
+							price: true,
+						},
+					},
+				},
+				where: {
+					restaurantName: {
+						search: restaurantName,
+					},
+				},
+			});
+
+			const data = JSON.stringify(searchedRestaurants, (key, value) =>
+				typeof value === 'bigint' ? Number(value) / 100 : value
+			);
+
+			return res.json(JSON.parse(data));
+		} else if (req.query.dishName !== undefined) {
+			const dishName = req.query.dishName !== undefined ? req.query.dishName.toString() : '';
+
+			const searchedDishes = await prisma.restaurantDish.findMany({
+				select: {
+					dishName: true,
+					price: true,
+					restaurant: {
+						select: {
+							restaurantName: true,
+							openingHours: {
+								select: {
+									startDayOfWeek: true,
+									startTimeHours: true,
+									startTimeMinutes: true,
+									endDayOfWeek: true,
+									endTimeHours: true,
+									endTimeMinutes: true,
+								},
+							},
+							dishes: {
+								select: {
+									dishName: true,
+									price: true,
+								},
 							},
 						},
 					},
 				},
-			},
-			where: {
-				dishName: {
-					search: dishName,
+				where: {
+					dishName: {
+						search: dishName,
+					},
 				},
-			},
-		});
+			});
 
-		const data = JSON.stringify(searchedDishes, (key, value) =>
-			typeof value === 'bigint' ? Number(value) / 100 : value
-		);
+			const data = JSON.stringify(searchedDishes, (key, value) =>
+				typeof value === 'bigint' ? Number(value) / 100 : value
+			);
 
-		res.send(data);
-		return;
+			return res.json(JSON.parse(data));
+		}
 	}
-
-	// TODO: fix the errors
-	res.send({ error: 'invalid query params' });
-});
+);
 
 app.get('/customers', query('id').notEmpty().escape(), async (req: Request, res: Response) => {
-	const result = validationResult(req);
-
-	if (result.isEmpty()) {
-		const customers = await prisma.customer.findMany({
-			where: {
-				id: Number(req.query.id),
-			},
-			include: {
-				purchaseHistory: true,
-			},
-		});
-		const data = JSON.stringify(customers, (key, value) =>
-			typeof value === 'bigint' ? Number(value) / 100 : value
-		);
-		res.send(data);
-	} else {
+	const errors = validationResult(req);
+	if (!errors.isEmpty()) {
 		const customers = await prisma.customer.findMany({
 			include: {
 				purchaseHistory: true,
@@ -306,61 +279,84 @@ app.get('/customers', query('id').notEmpty().escape(), async (req: Request, res:
 		const data = JSON.stringify(customers, (key, value) =>
 			typeof value === 'bigint' ? Number(value) / 100 : value
 		);
-		res.send(data);
+		return res.json(JSON.parse(data));
 	}
+
+	const customers = await prisma.customer.findMany({
+		where: {
+			id: Number(req.query.id),
+		},
+		include: {
+			purchaseHistory: true,
+		},
+	});
+	const data = JSON.stringify(customers, (key, value) =>
+		typeof value === 'bigint' ? Number(value) / 100 : value
+	);
+	return res.json(JSON.parse(data));
 });
 
-app.get('/customers/pay', async (req: Request, res: Response) => {
-	// id, dish_id
-
-	const customer = await prisma.customer.findFirstOrThrow({
-		where: {
-			id: Number(req.query.customerId),
-		},
-	});
-
-	const dish = await prisma.restaurantDish.findFirstOrThrow({
-		where: {
-			id: Number(req.query.dishId),
-		},
-	});
-
-	const restaurant = await prisma.restaurant.findFirstOrThrow({
-		where: {
-			id: Number(dish.restaurantId),
-		},
-	});
-
-	if (customer.cashBalance < dish.price) {
-		res.statusCode = 402;
-		res.send('Insufficient cash balance');
-		return;
-	}
-	try {
-		const updatedCustomer = await prisma.customer.update({
-			where: {
-				id: Number(req.query.customerId),
-			},
-			data: {
-				cashBalance: customer.cashBalance - dish.price,
-				purchaseHistory: {
-					create: {
-						dishName: dish.dishName,
-						restaurantName: restaurant.restaurantName,
-						transactionAmount: dish.price,
-					},
+app.get(
+	'/customers/pay',
+	checkBothNumericQuery('customerId', 'dishId'),
+	async (req: Request, res: Response) => {
+		// id, dish_id
+		const errors = validationResult(req);
+		if (!errors.isEmpty()) {
+			return res.status(400).json({ errors: errors.array() });
+		}
+		try {
+			const customer = await prisma.customer.findFirstOrThrow({
+				where: {
+					id: Number(req.query.customerId),
 				},
-			},
-		});
-		const data = JSON.stringify(updatedCustomer, (key, value) =>
-			typeof value === 'bigint' ? Number(value) / 100 : value
-		);
-		res.send(data);
-	} catch (error) {
-		console.error(error);
-		res.status(500).json({ message: 'Error updating customer data' });
+			});
+
+			const dish = await prisma.restaurantDish.findFirstOrThrow({
+				where: {
+					id: Number(req.query.dishId),
+				},
+			});
+
+			const restaurant = await prisma.restaurant.findFirstOrThrow({
+				where: {
+					id: Number(dish.restaurantId),
+				},
+			});
+
+			if (customer.cashBalance < dish.price) {
+				res.statusCode = 402;
+				res.send('Insufficient cash balance');
+				return;
+			}
+			try {
+				const updatedCustomer = await prisma.customer.update({
+					where: {
+						id: Number(req.query.customerId),
+					},
+					data: {
+						cashBalance: customer.cashBalance - dish.price,
+						purchaseHistory: {
+							create: {
+								dishName: dish.dishName,
+								restaurantName: restaurant.restaurantName,
+								transactionAmount: dish.price,
+							},
+						},
+					},
+				});
+				const data = JSON.stringify(updatedCustomer, (key, value) =>
+					typeof value === 'bigint' ? Number(value) / 100 : value
+				);
+				res.send(data);
+			} catch (error) {
+				res.status(500).json({ message: 'Error updating customer data' });
+			}
+		} catch (e) {
+			res.status(404).json(e + '');
+		}
 	}
-});
+);
 
 app.listen(port, () => {
 	console.log(`Server is running at http://localhost:${port}`);
