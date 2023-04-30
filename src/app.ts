@@ -200,8 +200,22 @@ app.get('/restaurants/search', async (req: Request, res: Response) => {
 		const searchedRestaurants = await prisma.restaurant.findMany({
 			select: {
 				restaurantName: true,
-				openingHours: true,
-				dishes: true,
+				openingHours: {
+					select: {
+						startDayOfWeek: true,
+						startTimeHours: true,
+						startTimeMinutes: true,
+						endDayOfWeek: true,
+						endTimeHours: true,
+						endTimeMinutes: true,
+					},
+				},
+				dishes: {
+					select: {
+						dishName: true,
+						price: true,
+					},
+				},
 			},
 			where: {
 				restaurantName: {
